@@ -58,7 +58,11 @@ function run(address) {
     nibbles.forEach((nibble) => {
         instruction += nibble.toString(16).toUpperCase();
     });
-    console.log(instruction);
+    // console.log(instruction);
+
+    const vxBinary = convertDecimalByteToBinary(cpu.registers.general[nibbles[1]][0]);
+    const vyBinary = convertDecimalByteToBinary(cpu.registers.general[nibbles[2]][0]);
+    let resultingBinary = "";
 
     cpu.instructionPointer += 0x2;
 
@@ -70,13 +74,9 @@ function run(address) {
                         cpu.memory[VRAM_START_ADDRESS + i] = 0x0;
                     }
                 } else {
-                    console.log("saí de subrotina");
-                    console.log(cpu.stack);
                     cpu.instructionPointer = cpu.stack.pop();
-                    console.log(cpu.instructionPointer);
                 }
             } else {
-                console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!1");
                 run(memoryAddress);
             }
             break;
@@ -84,9 +84,8 @@ function run(address) {
             cpu.instructionPointer = memoryAddress;
             break;
         case 0x2:
-            console.log("entrei de subrotina");
-            cpu.stack.push(memoryAddress);
-            cpu.instructionPointer = cpu.stack[cpu.stack.length - 1];
+            cpu.stack.push(cpu.instructionPointer);
+            cpu.instructionPointer = memoryAddress;
             break;
         case 0x3:
             if (cpu.registers.general[nibbles[1]][0] === byteConstant) {
@@ -112,41 +111,53 @@ function run(address) {
         case 0x8:
             switch (nibbles[3]) {
                 case 0x0:
-                    cpu.registers.general[nibbles[2]][0] = cpu.registers.general[nibbles[1]][0];
+                    cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[2]][0];
                     break;
                 case 0x1:
-                    cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[1]][0] || cpu.registers.general[nibbles[2]][0] ? 1 : 0;
+                    for (let i = 0; i < vxBinary.length; i++) {
+                        resultingBinary += parseInt(vxBinary[i]) || parseInt(vyBinary[i]) ? 1 : 0;
+                    }
+
+                    cpu.registers.general[nibbles[1]][0] = parseInt(resultingBinary, 2);
                     break;
                 case 0x2:
-                    cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[1]][0] && cpu.registers.general[nibbles[2]][0] ? 1 : 0;
+                    for (let i = 0; i < vxBinary.length; i++) {
+                        resultingBinary += parseInt(vxBinary[i]) && parseInt(vyBinary[i]) ? 1 : 0;
+                    }
+
+                    cpu.registers.general[nibbles[1]][0] = parseInt(resultingBinary, 2);
                     break;
                 case 0x3:
-                    cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[1]][0] !== cpu.registers.general[nibbles[2]][0] ? 1 : 0;
+                    for (let i = 0; i < vxBinary.length; i++) {
+                        resultingBinary += parseInt(vxBinary[i]) !== parseInt(vyBinary[i]) ? 1 : 0;
+                    }
+
+                    cpu.registers.general[nibbles[1]][0] = parseInt(resultingBinary, 2);
                     break;
                 case 0x4:
-                    cpu.registers.general[0xf][0] = cpu.registers.general[nibbles[1]][0] + cpu.registers.general[nibbles[2]][0] > 255 ? 1 : 0;
+                    const hadCarry = cpu.registers.general[nibbles[1]][0] + cpu.registers.general[nibbles[2]][0] > 255 ? 1 : 0;
+                    cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[1]][0] + cpu.registers.general[nibbles[2]][0];
+                    cpu.registers.general[0xf][0] = hadCarry;
                     break;
                 case 0x5:
-                    cpu.registers.general[0xf][0] = cpu.registers.general[nibbles[2]][0] - cpu.registers.general[nibbles[1]][0] > 0 ? 1 : 0;
+                    const hadBorrow = cpu.registers.general[nibbles[1]][0] > cpu.registers.general[nibbles[2]][0] ? 1 : 0;
+                    cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[1]][0] - cpu.registers.general[nibbles[2]][0];
+                    cpu.registers.general[0xf][0] = hadBorrow;
                     break;
                 case 0x6:
+                    const leastSignificant = cpu.registers.general[nibbles[1]][0] & 0x1;
                     cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[2]][0] >> 1;
-                    cpu.registers.general[0xf][0] = parseInt(nibbles[2].toString(2).split("").pop());
+                    cpu.registers.general[0xf][0] = leastSignificant;
                     break;
                 case 0x7:
-                    let subResult = cpu.registers.general[nibbles[2]][0] - cpu.registers.general[nibbles[1]][0];
-
-                    if (subResult < 0) {
-                        subResult += 255;
-                        cpu.registers.general[0xf][0] = 0;
-                    } else {
-                        cpu.registers.general[0xf][0] = 1;
-                    }
-                    cpu.registers.general[nibbles[1]][0] = subResult;
+                    const hadBorrowAgain = cpu.registers.general[nibbles[2]][0] > cpu.registers.general[nibbles[1]][0] ? 1 : 0;
+                    cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[2]][0] - cpu.registers.general[nibbles[1]][0];
+                    cpu.registers.general[0xf][0] = hadBorrowAgain;
                     break;
                 case 0xe:
+                    const mostSignificant = cpu.registers.general[nibbles[1]][0] >> 7;
                     cpu.registers.general[nibbles[1]][0] = cpu.registers.general[nibbles[2]][0] << 1;
-                    cpu.registers.general[0xf][0] = parseInt(nibbles[2].toString(2).split("").shift());
+                    cpu.registers.general[0xf][0] = mostSignificant;
                     break;
             }
             break;
@@ -162,8 +173,13 @@ function run(address) {
             cpu.instructionPointer = memoryAddress + cpu.registers.general[0x0][0];
             break;
         case 0xc:
-            // TODO: Add Random Number with Masking
-            cpu.registers.general[nibbles[1]][0] = 1;
+            const generatedBinary = convertDecimalByteToBinary(Math.floor(Math.random() * 256));
+            const constantBinary = convertDecimalByteToBinary(byteConstant);
+            let randomBinary = "";
+            for (let i = 0; i < vxBinary.length; i++) {
+                randomBinary += parseInt(generatedBinary[i]) && parseInt(constantBinary[i]) ? 1 : 0;
+            }
+            cpu.registers.general[nibbles[1]][0] = randomBinary;
             break;
         case 0xd:
             let X = cpu.registers.general[nibbles[1]][0];
@@ -180,16 +196,18 @@ function run(address) {
                 let pixelPointer = VRAM_START_ADDRESS + X + Y * WIDTH + WIDTH * i;
                 const binaryData = convertDecimalByteToBinary(byte);
 
-                for (let bit = 0; bit < binaryData.length; bit++) {
-                    pixelPointer++;
-                    cpu.memory[pixelPointer] = parseInt(binaryData[bit]) !== cpu.memory[pixelPointer] ? 1 : 0;
-                    if (cpu.memory[pixelPointer] === 0) {
+                for (const element of binaryData) {
+                    const previousPixelValue = cpu.memory[pixelPointer];
+                    cpu.memory[pixelPointer] = parseInt(element) !== cpu.memory[pixelPointer] ? 1 : 0;
+                    if (previousPixelValue !== cpu.memory[pixelPointer] && cpu.memory[pixelPointer] === 0) {
                         pixelHasChangedToUnset = true;
                     }
+                    pixelPointer++;
                 }
                 pixelPointer += WIDTH;
             });
 
+            cpu.registers.general[0xf][0] = pixelHasChangedToUnset ? 1 : 0;
             break;
         case 0xe:
             if (nibbles[3] === 0xe) {
@@ -203,13 +221,18 @@ function run(address) {
             }
             break;
         case 0xf:
-            console.log("fiz coisinha rs");
             switch (nibbles[2]) {
                 case 0x0:
                     if (nibbles[3] === 0x7) {
                         cpu.registers.general[nibbles[1]][0] = cpu.timers.delay[0];
                     } else {
-                        // TODO: Wait for Keypress
+                        console.log('mim dê papai')
+                        let interval = setInterval(() => {
+
+                            if (cpu.currentlyPressedKey) {
+                                clearInterval(interval);
+                            }
+                        }, 1000 / 60);
                     }
                     break;
                 case 0x1:
@@ -229,23 +252,19 @@ function run(address) {
                     cpu.registers.address.i[0] = cpu.registers.general[nibbles[1]][0];
                     break;
                 case 0x3:
-                    console.log("Fiz algo aqui");
-                    const binaryCodedDecimal = cpu.registers.general[nibbles[1]][0] + 0;
-                    cpu.memory[cpu.registers.address.i[0]] = binaryCodedDecimal;
-                    cpu.memory[cpu.registers.address.i[0] + 1] = binaryCodedDecimal;
-                    cpu.memory[cpu.registers.address.i[0] + 2] = binaryCodedDecimal;
+                    const value = cpu.registers.general[nibbles[1]][0].toString().padStart(3, "0");
+                    value.split("").forEach((number, i) => {
+                        cpu.memory[cpu.registers.address.i[0] + i] = parseInt(number);
+                    });
                     break;
                 case 0x5:
-                    console.log("Aqui també,");
                     for (let i = 0; i <= nibbles[1]; i++) {
-                        cpu.memory[cpu.registers.address.i] = cpu.registers.general[i][0];
-                        cpu.registers.address.i[0] += nibbles[1] + 1;
+                        cpu.memory[cpu.registers.address.i[0] + i] = cpu.registers.general[i][0];
                     }
                     break;
                 case 0x6:
                     for (let i = 0; i <= nibbles[1]; i++) {
-                        cpu.registers.general[i][0] = cpu.memory[cpu.registers.address.i[0]];
-                        cpu.registers.address.i[0] += nibbles[1] + 1;
+                        cpu.registers.general[i][0] = cpu.memory[cpu.registers.address.i[0] + i];
                     }
                     break;
             }
@@ -271,6 +290,11 @@ function drawToContext(i) {
 
 function main() {
     cpu.instructionPointer = 0x200;
+
+    setInterval(() => {
+        run(cpu.instructionPointer);
+    }, 1);
+
     setInterval(() => {
         if (cpu.timers.delay > 0x0) {
             cpu.timers.delay--;
@@ -278,7 +302,6 @@ function main() {
         if (cpu.timers.sound > 0x0) {
             cpu.timers.sound--;
         }
-        run(cpu.instructionPointer);
 
         drawToContext();
     }, 1000 / 60);
@@ -287,11 +310,63 @@ function main() {
 input_file.addEventListener("input", (e) => {
     e.target.files[0].arrayBuffer().then((fileBuffer) => {
         const fileView = new Uint8Array(fileBuffer);
-        console.log(fileBuffer);
         for (let i = 0; i < fileView.length; i++) {
             cpu.memory[0x200 + i] = fileView[i];
         }
 
         main();
     });
+});
+
+document.addEventListener("keydown", (e) => {
+    switch (e.key) {
+        case "1":
+        case "2":
+        case "3":
+            cpu.currentlyPressedKey = parseInt(`0x${e.key}`);
+            break;
+        case "4":
+            cpu.currentlyPressedKey = 0xc;
+            break;
+        case "q":
+            cpu.currentlyPressedKey = 0x4;
+            break;
+        case "w":
+            cpu.currentlyPressedKey = 0x5;
+            break;
+        case "e":
+            cpu.currentlyPressedKey = 0x6;
+            break;
+        case "r":
+            cpu.currentlyPressedKey = 0xd;
+            break;
+        case "a":
+            cpu.currentlyPressedKey = 0x7;
+            break;
+        case "s":
+            cpu.currentlyPressedKey = 0x8;
+            break;
+        case "d":
+            cpu.currentlyPressedKey = 0x9;
+            break;
+        case "f":
+            cpu.currentlyPressedKey = 0xe;
+            break;
+        case "z":
+            cpu.currentlyPressedKey = 0xa;
+            break;
+        case "x":
+            cpu.currentlyPressedKey = 0x0;
+            break;
+        case "c":
+            cpu.currentlyPressedKey = 0xb;
+            break;
+        case "v":
+            cpu.currentlyPressedKey = 0xf;
+            break;
+    }
+});
+
+document.addEventListener("keyup", (e) => {
+    cpu.currentlyPressedKey = null;
 });
